@@ -137,6 +137,15 @@ $query = $this->db->query($sql, array($fdate,$tdate,$cid));
 }
 
 
+public function getGstr9b2b($yr,$cid)
+{
+//$sql="SELECT l.account_name, itm.trans_id,itm.trans_date,t.gstin,itm.item_gstpc, round(sum(itm.taxable_amount),2)`txb_amt`,round(sum(itm.nett_amount),2)`net_amt`,round(sum(itm.igst_amount),2)`igst`,round(sum(itm.sgst_amount),2)`sgst`,round(sum(itm.cgst_amount),2)`cgst` FROM `itemtransaction_tbl` itm,transaction_tbl t,ledgermaster_tbl l WHERE t.db_account=l.id AND itm.delflag=0 AND itm.trans_type='SALE' AND t.id=itm.trans_link_id and t.gstin<>'' and t.finyear=? and itm.company_id=? group by itm.trans_id,itm.item_gstpc ORDER BY itm.trans_id,t.gstin";
+$sql="SELECT round(sum(itm.taxable_amount),2)`txb_amt`,round(sum(itm.nett_amount),2)`net_amt`,round(sum(itm.igst_amount),2)`igst`,round(sum(itm.sgst_amount),2)`sgst`,round(sum(itm.cgst_amount),2)`cgst`,round(sum(itm.cess_amount),2)`cess` FROM `itemtransaction_tbl` itm,transaction_tbl t,ledgermaster_tbl l WHERE t.db_account=l.id AND itm.delflag=0 AND itm.trans_type='SALE' AND t.id=itm.trans_link_id and t.gstin<>'' and t.finyear=? and itm.company_id=?";
+$query = $this->db->query($sql, array($yr,$cid));
+//$this->output->enable_profiler(TRUE); 
+
+    return $query->result_array();
+}
 
 public function getGstr1b2b($fdate,$tdate,$cid)
 {
