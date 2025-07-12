@@ -688,9 +688,6 @@ else {
 }
 
 
-
-
-
 public function getGstJson()
 
 {
@@ -698,7 +695,7 @@ public function getGstJson()
    extract($_POST);
    $data_arr=get_defined_vars();
 //$data_post = array("fdate"=>$fdate,"tdate"=>$tdate,"compId"=>$compId,"compStatecode"=>$compStatecode,"compGstin"=>$compGstin,"retmon"=>$retmon,"rcm"=>$rcm);
-   //$finyear=$data_arr['finyear'];
+
    //var_dump($data_arr);
    $cid=$data_arr['compId'];
    $fdate=$data_arr['fdate'];
@@ -709,6 +706,39 @@ public function getGstJson()
    $rcm=$data_arr['rcm'];
    $ec=$data_arr['ec'];
    $trans_stype="SALE";
+   $finyear=$data_arr['finyear'];
+  $prv_gross_turnover=0;
+  $current_gross_turnover=0;
+$month = substr($retmon, 0, 2); // "06"
+$year = substr($retmon, 2, 4); // "2025"
+// Create first and last day of the month
+$startDate = date("Y-m-01", strtotime("$year-$month-01"));
+$endDate   = date("Y-m-t", strtotime("$year-$month-01")); // last day of month
+
+//Get Current Year Gross Turnover of return period.
+$getCurrGT=$this->data_model->getCurrGT($cid,$finyear,$endDate);
+if($getCurrGT)
+{
+  foreach ($getCurrGT as $key => $cur_gt) {
+    $current_gross_turnover = $cur_gt['curr_turnover_amount'];
+  }
+}
+
+   $spl_fin_year= explode("-",$finyear);
+   //var_dump($spl_fin_year);
+   $prvyear = (intval($spl_fin_year[0])-1) . "-" . (intval($spl_fin_year[1])-1);
+
+//Previous Year Gross Turnover
+$getPrevGT=$this->data_model->getPyrGT($cid,$prvyear);
+if($getPrevGT)
+{
+  foreach ($getPrevGT as $key => $prv_gt) {
+    $prv_gross_turnover = $prv_gt['prvyr_turnover_amount'];
+  }
+}
+
+
+
    $gstGroupData=$this->data_model->gstGroup($fdate,$tdate,$cid);
    if($gstGroupData)
    {
@@ -819,134 +849,11 @@ $itms = array();
 
 $data['b2b']=$arrmerge1;
 $arrmerge1=array();
-$finalmerge = array_merge(array('gstin'=>$compGstin,'fp'=>"'". $retmon,'version'=>"GST3.0.3",'hash'=>"hash"),$data);
-
-   }
-//------------------------------------------CREDIT / DEBIT NOTE---------
-//CDNR
 
 
 
+$finalmerge = array_merge(array('gstin'=>$compGstin,'fp'=>"'". $retmon,'gt'=>(float) $prv_gross_turnover,'cur_gt'=>(float) $current_gross_turnover),$data);
 
-$gstcdnrGroupData=$this->data_model->gstcdnrGroup($fdate,$tdate,$cid);
-if($gstcdnrGroupData)
-{
- foreach ($gstcdnrGroupData as $key => $cdnrgstvalue) {
-   
-   $gstin=$cdnrgstvalue['gstin'];
-
-//var_dump($gstin);
- $cdnrtransbyGstin=$this->data_model->get_cdnrTransbyGstin($fdate,$tdate,$cid,$gstin);
- if($cdnrtransbyGstin)
- {
-   foreach ($cdnrtransbyGstin as $key => $cdnrtbgvalue) {
-     
-   $inv_no = $cdnrtbgvalue['trans_id'];
-   $tr_date = $cdnrtbgvalue['trans_date'];
-   $tr_id = $cdnrtbgvalue['trans_id'];
-   $igstno = $cdnrtbgvalue['gstin'];
-
-//var_dump($inv_no);
-
- $cdnrtransbyInvSum=$this->data_model->get_cdnrTransbyInvSum($fdate,$tdate,$cid,$igstno,$inv_no);
- if($cdnrtransbyInvSum)
- {
-   foreach ($cdnrtransbyInvSum as $key => $cdnrtbisvalue) {
-     # code...
-$invamt=$cdnrtbisvalue['inv_amt'];
-
-
-
-
-
-   } //tbisvalue
- }
-
-
-
-
-$itms = array();
- $cdnrtransbyInv=$this->data_model->get_cdnrTransbyInv($fdate,$tdate,$cid,$gstin,$inv_no);
- if($cdnrtransbyInv)
- {
-   foreach ($cdnrtransbyInv as $key => $cdnrvalue) {
-
-if($inv_no==$cdnrvalue['trans_id'])
-{
-if($cdnrvalue['trans_type']=="SRTN")
-{
-  $nttype="C";
-}  
-if($cdnrvalue['trans_type']=="PRTN")
-{
-  $nttype="D";
-}  
-
-if($compStatecode==$cdnrvalue['pos'])
-{
-
-$itm_cgst= $cdnrvalue['item_cgst'];
-$itm_sgst= $cdnrvalue['item_sgst'];
-$itm_cs = $cdnrvalue['item_cess'];
-$itm_gstpc = $cdnrvalue['gst_pc'].'01';
-
-$itms[]=array('itm_det' => array('txval'=>(float)$cdnrvalue['taxable_amt'],
-   'rt' =>(float)$cdnrvalue['gst_pc'],
-   'camt'=>(float)$itm_cgst,
-   'samt'=>(float)$itm_sgst,
-   'csamt'=>(float)$itm_cs
-),'num'=>(int)$itm_gstpc);
-
-}
-else {
-$itm_igst= $cdnrvalue['item_igst'];
-$itm_cs = $cdnrvalue['item_cess'];
-$itm_gstpc = $cdnrvalue['gst_pc'].'01';
-$itms[]=array('itm_det' => array('txval'=>(float)$cdnrvalue['taxable_amt'],
-   'rt' =>(float)$cdnrvalue['gst_pc'],
-   'iamt'=>(float)$itm_igst,
-   'csamt'=>(float)$itm_cs
-),'num'=>(int)$itm_gstpc);
-
-}
-
-}
-
-
-
-
- } //cdnrvalue
-
-$inv_amt = $invamt;
-//var_dump($inv_amt);
-$invdate =date("d-m-Y", strtotime($tr_date));
-
- $inv['nt'][]= array('nt_num' => $tr_id,
- 'nt_dt'=>$invdate,
- 'ntty'=>$nttype,
- 'val'=> (float)$inv_amt,
- 'pos' =>"'" . substr($gstin,0,2) ."'", // $gstvalue['placeofsupply'] ."'",
- 'rchrg' => $rcm,
- 'itms'=>$itms,'inv_typ' => 'R');
-
-
-   } //transbyGstin
-
- 
-}
-
- } //gstvalue
-$arrmerge1[]= array_merge(array('ctin' => $gstin),$inv);
-
-$inv = array();
-$itms = array();
-
-}
-
-$data['cdnr']=$arrmerge1;
-$arrmerge1=array();
-$finalmerge = array_merge(array('gstin'=>$compGstin,'fp'=>"'". $retmon,'version'=>"GST3.0.3",'hash'=>"hash"),$data);
-}
 
 //B2C
 
@@ -962,6 +869,7 @@ foreach ($b2cData as $key => $b2cvalue) {
 
 if($compStatecode==$b2cvalue['pos'])
 {
+
 //$itm_gstpc = $b2bvalue['gst_pc'].'01';
 
 $b2arr[] = array('sply_ty'=>"INTRA",'pos'=>"'" . $b2cvalue['pos'],'typ'=>$ec,'txval'=>(float)$b2cvalue['taxable_amt'],'rt'=>(float)$b2cvalue['gst_pc'],'iamt'=>(float)$b2cvalue['item_igst'],'camt'=>(float)$b2cvalue['item_cgst'],'samt'=>(float)$b2cvalue['item_sgst'],'csamt'=>(float)$b2cvalue['item_cess']);
@@ -974,23 +882,112 @@ $b2arr[] = array('sply_ty'=>"INTER",'pos'=>"'" . $b2cvalue['pos'],'typ'=>$ec,'tx
 }
 
 
-//HSN List
-    $hsndata=array();
-    $gstr1hsnData=$this->data_model->getGstr1hsn($fdate,$tdate,$cid,$trans_stype);
-    if($gstr1hsnData)
+//B2B - HSN List
+    $hsnb2bata=array();
+    $gstr1b2bhsnData=$this->data_model->getGstr1b2bhsn($fdate,$tdate,$cid,$trans_stype);
+//        $gstr1hsnData=$this->data_model->getGstr1hsn($fdate,$tdate,$cid,$trans_stype);
+
+    if($gstr1b2bhsnData)
+
     {
       $rw=1;
-      foreach ($gstr1hsnData as $key => $hsn) {
-//        substr( $string_n, 0, 4 ) === "http"
-        if(substr($hsn['item_hsnsac'],0,2)=="99")
+      foreach ($gstr1b2bhsnData as $key => $hsn) {
+        # code...
+         if(substr($hsn['item_hsnsac'],0,2)=="99")
   {
-        $hsndata["data"][]=array("num"=>$rw,"hsn_sc"=>$hsn['item_hsnsac'],"desc"=>"","uqc"=>"NA","qty"=>intval($hsn['item_qty']),"rt"=>floatval($hsn['item_gstpc']),"txval"=>floatval($hsn['taxable_amount']),"iamt"=>floatval($hsn['igst_amount']),"camt"=>floatval($hsn['cgst_amount']),"samt"=>floatval($hsn['sgst_amount']),"csamt"=>floatval($hsn['cess_amount']));
+        $hsnb2bdata["hsn_b2b"][]=array(
+    "num" => $rw,
+    "hsn_sc" => $hsn['item_hsnsac'],
+    "desc" => "",
+    "uqc" => "NA",
+    "qty" => 0,
+ "rt" => (float) sprintf('%.2f', $hsn['item_gstpc']),
+    "txval" => (float) sprintf('%.2f',$hsn['taxable_amount']),
+    "iamt" => (float) sprintf('%.2f', $hsn['igst_amount']),
+    "camt" => (float) sprintf('%.2f', $hsn['cgst_amount']),
+    "samt" => (float) sprintf('%.2f', $hsn['sgst_amount']),
+    "csamt" => (float) sprintf('%.2f', $hsn['cess_amount'])
+
+);
   }
   else
   {
-    $hsndata["data"][]=array("num"=>$rw,"hsn_sc"=>$hsn['item_hsnsac'],"desc"=>"","uqc"=>$hsn['item_unit'],"qty"=>intval($hsn['item_qty']),"rt"=>floatval($hsn['item_gstpc']),"txval"=>floatval($hsn['taxable_amount']),"iamt"=>floatval($hsn['igst_amount']),"camt"=>floatval($hsn['cgst_amount']),"samt"=>floatval($hsn['sgst_amount']),"csamt"=>floatval($hsn['cess_amount']));
+    $hsnb2bdata["hsn_b2b"][]=array(
+    "num" => $rw,
+    "hsn_sc" => $hsn['item_hsnsac'],
+    "desc" => "",
+    "uqc" => $hsn['item_unit'],
+    "qty" => (float) sprintf('%.2f', $hsn['item_qty']),
+   "rt" => (float) sprintf('%.2f', $hsn['item_gstpc']),
+    "txval" => (float) sprintf('%.2f', $hsn['taxable_amount']),
+    "iamt" => (float) sprintf('%.2f', $hsn['igst_amount']),
+    "camt" => (float) sprintf('%.2f', $hsn['cgst_amount']),
+    "samt" => (float) sprintf('%.2f', $hsn['sgst_amount']),
+    "csamt" => (float) sprintf('%.2f', $hsn['cess_amount'])
+);
 
   }      
+
+       
+//        $hsndata["data"]//[]=array("num"=>$rw,"hsn_sc"=>$hsn['item_hsnsac'],"desc"=>"","uqc"=>$hsn['item_unit'],"qty"=>intval($hsn['item_qty']),"rt"=>floatval($hsn['item_gstpc']),"txval"=>floatval($hsn['taxable_amount']),"iamt"=>floatval($hsn['igst_amount']),"camt"=>floatval($hsn['cgst_amount']),"samt"=>floatval($hsn['sgst_amount']),"csamt"=>floatval($hsn['cess_amount']));
+      
+
+        $rw++;
+      }
+    }
+
+//B2C - HSN List
+    $hsnb2cdata=array();
+    $gstr1b2chsnData=$this->data_model->getGstr1b2chsn($fdate,$tdate,$cid,$trans_stype);
+//        $gstr1hsnData=$this->data_model->getGstr1hsn($fdate,$tdate,$cid,$trans_stype);
+
+    if($gstr1b2chsnData)
+
+    {
+      $rw=1;
+      foreach ($gstr1b2chsnData as $key => $hsn) {
+        # code...
+         if(substr($hsn['item_hsnsac'],0,2)=="99")
+  {
+  //      $hsnb2cdata["hsn_b2c"][]=array("num"=>$rw,"hsn_sc"=>$hsn['item_hsnsac'],"desc"=>"","uqc"=>"NA","qty"=>0),"rt"=>floatval($hsn['item_gstpc']),"txval"=>floatval($hsn['taxable_amount']),"iamt"=>floatval($hsn['igst_amount']),"camt"=>floatval($hsn['cgst_amount']),"samt"=>floatval($hsn['sgst_amount']),"csamt"=>floatval($hsn['cess_amount']));
+  $hsnb2cdata["hsn_b2c"][] = array(
+    "num" => $rw,
+    "hsn_sc" => $hsn['item_hsnsac'],
+    "desc" => "",
+    "uqc" => "NA",
+    "qty" => 0,
+   "rt" => (float) sprintf('%.2f', $hsn['item_gstpc']),
+    "txval" => (float) sprintf('%.2f', $hsn['taxable_amount']),
+    "iamt" => (float) sprintf('%.2f', $hsn['igst_amount']),
+    "camt" => (float) sprintf('%.2f', $hsn['cgst_amount']),
+    "samt" => (float) sprintf('%.2f', $hsn['sgst_amount']),
+    "csamt" => (float) sprintf('%.2f', $hsn['cess_amount'])
+
+);
+  }
+  else
+  {
+    $hsnb2cdata["hsn_b2c"][] = array(
+    "num" => $rw,
+    "hsn_sc" => $hsn['item_hsnsac'],
+    "desc" => "",
+    "uqc" => $hsn['item_unit'],
+    "qty" => (float) sprintf('%.2f', $hsn['item_qty']),
+   "rt" => (float) sprintf('%.2f', $hsn['item_gstpc']),
+    "txval" => (float) sprintf('%.2f', $hsn['taxable_amount']),
+    "iamt" => (float) sprintf('%.2f', $hsn['igst_amount']),
+    "camt" => (float) sprintf('%.2f', $hsn['cgst_amount']),
+    "samt" => (float) sprintf('%.2f', $hsn['sgst_amount']),
+    "csamt" => (float) sprintf('%.2f', $hsn['cess_amount'])
+
+);
+    //$hsnb2cdata["hsn_b2c"][]=array("num"=>$rw,"hsn_sc"=>$hsn['item_hsnsac'],"desc"=>"","uqc"=>$hsn['item_unit'],"qty"=>intval($hsn['item_qty']),"rt"=>floatval($hsn['item_gstpc']),"txval"=>floatval($hsn['taxable_amount']),"iamt"=>floatval($hsn['igst_amount']),"camt"=>floatval($hsn['cgst_amount']),"samt"=>floatval($hsn['sgst_amount']),"csamt"=>floatval($hsn['cess_amount']));
+
+  }      
+
+       
+//        $hsndata["data"]//[]=array("num"=>$rw,"hsn_sc"=>$hsn['item_hsnsac'],"desc"=>"","uqc"=>$hsn['item_unit'],"qty"=>intval($hsn['item_qty']),"rt"=>floatval($hsn['item_gstpc']),"txval"=>floatval($hsn['taxable_amount']),"iamt"=>floatval($hsn['igst_amount']),"camt"=>floatval($hsn['cgst_amount']),"samt"=>floatval($hsn['sgst_amount']),"csamt"=>floatval($hsn['cess_amount']));
+      
 
         $rw++;
       }
@@ -999,9 +996,17 @@ $b2arr[] = array('sply_ty'=>"INTER",'pos'=>"'" . $b2cvalue['pos'],'typ'=>$ec,'tx
 
 
 
-
 $data['b2cs']=$b2arr;
-$data['hsn'] =$hsndata;
+// $data['hsn'] = [
+//     'hsn_b2b' => $hsnb2bdata['hsn_b2b'] ? $hsnb2bdata['hsn_b2b'] : [],
+//     'hsn_b2c' => $hsnb2cdata['hsn_b2c'] ? $hsnb2cdata['hsn_b2c'] : []
+//];
+
+$data['hsn'] = [
+    'hsn_b2b' => $hsnb2bdata['hsn_b2b'] ?? [],
+    'hsn_b2c' => $hsnb2cdata['hsn_b2c'] ?? []
+];
+
 $fmerge = array_merge($finalmerge,$data);
 $inv = array();
 $itms = array();
@@ -1026,9 +1031,351 @@ $output = json_encode($fmerge,JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
 //echo json_encode($finalmerge,JSON_PRETTY_PRINT);
 
 
+}
 
 
-  }
+}
+
+
+
+// public function getGstJson()
+
+// {
+//   $data=array();
+//    extract($_POST);
+//    $data_arr=get_defined_vars();
+// //$data_post = array("fdate"=>$fdate,"tdate"=>$tdate,"compId"=>$compId,"compStatecode"=>$compStatecode,"compGstin"=>$compGstin,"retmon"=>$retmon,"rcm"=>$rcm);
+//    //$finyear=$data_arr['finyear'];
+//    //var_dump($data_arr);
+//    $cid=$data_arr['compId'];
+//    $fdate=$data_arr['fdate'];
+//    $tdate=$data_arr['tdate'];
+//    $compStatecode=$data_arr['compStatecode'];
+//    $compGstin=$data_arr['compGstin'];
+//    $retmon=$data_arr['retmon'];
+//    $rcm=$data_arr['rcm'];
+//    $ec=$data_arr['ec'];
+//    $trans_stype="SALE";
+//    $gstGroupData=$this->data_model->gstGroup($fdate,$tdate,$cid);
+//    if($gstGroupData)
+//    {
+//     foreach ($gstGroupData as $key => $gstvalue) {
+      
+//       $gstin=$gstvalue['gstin'];
+
+// //var_dump($gstin);
+//     $transbyGstin=$this->data_model->get_b2bTransbyGstin($fdate,$tdate,$cid,$gstin);
+//     if($transbyGstin)
+//     {
+//       foreach ($transbyGstin as $key => $tbgvalue) {
+        
+//       $inv_no = $tbgvalue['trans_id'];
+//       $tr_date = $tbgvalue['trans_date'];
+//       $tr_id = $tbgvalue['trans_id'];
+//       $igstno = $tbgvalue['gstin'];
+
+// //var_dump($inv_no);
+
+//     $transbyInvSum=$this->data_model->get_b2bTransbyInvSum($fdate,$tdate,$cid,$igstno,$inv_no);
+//     if($transbyInvSum)
+//     {
+//       foreach ($transbyInvSum as $key => $tbisvalue) {
+//         # code...
+//    $invamt=$tbisvalue['inv_amt'];
+   
+
+
+
+
+//       } //tbisvalue
+//     }
+
+
+
+
+//  $itms = array();
+//     $transbyInv=$this->data_model->get_b2bTransbyInv($fdate,$tdate,$cid,$gstin,$inv_no);
+//     if($transbyInv)
+//     {
+//       foreach ($transbyInv as $key => $b2bvalue) {
+
+//   if($inv_no==$b2bvalue['trans_id'])
+// {
+  
+// if($compStatecode==$b2bvalue['pos'])
+// {
+
+// $itm_cgst= $b2bvalue['item_cgst'];
+// $itm_sgst= $b2bvalue['item_sgst'];
+// $itm_cs = $b2bvalue['item_cess'];
+// $itm_gstpc = $b2bvalue['gst_pc'].'01';
+
+// $itms[]=array('num'=>(int)$itm_gstpc,
+//     'itm_det' => array('txval'=>(float)$b2bvalue['taxable_amt'],
+//       'rt' =>(float)$b2bvalue['gst_pc'],
+//       'camt'=>(float)$itm_cgst,
+//       'samt'=>(float)$itm_sgst,
+//       'csamt'=>(float)$itm_cs
+//   ),);
+
+// }
+// else {
+// $itm_igst= $b2bvalue['item_igst'];
+// $itm_cs = $b2bvalue['item_cess'];
+// $itm_gstpc = $b2bvalue['gst_pc'].'01';
+// $itms[]=array('num'=>(int)$itm_gstpc,
+//     'itm_det' => array('txval'=>(float)$b2bvalue['taxable_amt'],
+//       'rt' =>(float)$b2bvalue['gst_pc'],
+//       'iamt'=>(float)$itm_igst,
+//       'csamt'=>(float)$itm_cs
+//   ),);
+
+// }
+
+// }
+
+
+
+
+//     } //b2bvalue
+
+// $inv_amt = $invamt;
+// //var_dump($inv_amt);
+// $invdate =date("d-m-Y", strtotime($tr_date));
+
+//     $inv['inv'][]= array('inum' => $tr_id,
+//     'idt'=>$invdate,
+//     'val'=> (float)$inv_amt,
+//     'pos' =>"'" . substr($gstin,0,2) ."'", // $gstvalue['placeofsupply'] ."'",
+//     'rchrg' => $rcm,
+//     'inv_typ' => 'R','itms'=>$itms);
+
+
+//       } //transbyGstin
+
+    
+// }
+
+//     } //gstvalue
+// $arrmerge1[]= array_merge(array('ctin' => $gstin),$inv);
+
+// $inv = array();
+// $itms = array();
+   
+// }
+
+// $data['b2b']=$arrmerge1;
+// $arrmerge1=array();
+// $finalmerge = array_merge(array('gstin'=>$compGstin,'fp'=>"'". $retmon,'version'=>"GST3.0.3",'hash'=>"hash"),$data);
+
+//    }
+// //------------------------------------------CREDIT / DEBIT NOTE---------
+// //CDNR
+
+
+
+
+// $gstcdnrGroupData=$this->data_model->gstcdnrGroup($fdate,$tdate,$cid);
+// if($gstcdnrGroupData)
+// {
+//  foreach ($gstcdnrGroupData as $key => $cdnrgstvalue) {
+   
+//    $gstin=$cdnrgstvalue['gstin'];
+
+// //var_dump($gstin);
+//  $cdnrtransbyGstin=$this->data_model->get_cdnrTransbyGstin($fdate,$tdate,$cid,$gstin);
+//  if($cdnrtransbyGstin)
+//  {
+//    foreach ($cdnrtransbyGstin as $key => $cdnrtbgvalue) {
+     
+//    $inv_no = $cdnrtbgvalue['trans_id'];
+//    $tr_date = $cdnrtbgvalue['trans_date'];
+//    $tr_id = $cdnrtbgvalue['trans_id'];
+//    $igstno = $cdnrtbgvalue['gstin'];
+
+// //var_dump($inv_no);
+
+//  $cdnrtransbyInvSum=$this->data_model->get_cdnrTransbyInvSum($fdate,$tdate,$cid,$igstno,$inv_no);
+//  if($cdnrtransbyInvSum)
+//  {
+//    foreach ($cdnrtransbyInvSum as $key => $cdnrtbisvalue) {
+//      # code...
+// $invamt=$cdnrtbisvalue['inv_amt'];
+
+
+
+
+
+//    } //tbisvalue
+//  }
+
+
+
+
+// $itms = array();
+//  $cdnrtransbyInv=$this->data_model->get_cdnrTransbyInv($fdate,$tdate,$cid,$gstin,$inv_no);
+//  if($cdnrtransbyInv)
+//  {
+//    foreach ($cdnrtransbyInv as $key => $cdnrvalue) {
+
+// if($inv_no==$cdnrvalue['trans_id'])
+// {
+// if($cdnrvalue['trans_type']=="SRTN")
+// {
+//   $nttype="C";
+// }  
+// if($cdnrvalue['trans_type']=="PRTN")
+// {
+//   $nttype="D";
+// }  
+
+// if($compStatecode==$cdnrvalue['pos'])
+// {
+
+// $itm_cgst= $cdnrvalue['item_cgst'];
+// $itm_sgst= $cdnrvalue['item_sgst'];
+// $itm_cs = $cdnrvalue['item_cess'];
+// $itm_gstpc = $cdnrvalue['gst_pc'].'01';
+
+// $itms[]=array('itm_det' => array('txval'=>(float)$cdnrvalue['taxable_amt'],
+//    'rt' =>(float)$cdnrvalue['gst_pc'],
+//    'camt'=>(float)$itm_cgst,
+//    'samt'=>(float)$itm_sgst,
+//    'csamt'=>(float)$itm_cs
+// ),'num'=>(int)$itm_gstpc);
+
+// }
+// else {
+// $itm_igst= $cdnrvalue['item_igst'];
+// $itm_cs = $cdnrvalue['item_cess'];
+// $itm_gstpc = $cdnrvalue['gst_pc'].'01';
+// $itms[]=array('itm_det' => array('txval'=>(float)$cdnrvalue['taxable_amt'],
+//    'rt' =>(float)$cdnrvalue['gst_pc'],
+//    'iamt'=>(float)$itm_igst,
+//    'csamt'=>(float)$itm_cs
+// ),'num'=>(int)$itm_gstpc);
+
+// }
+
+// }
+
+
+
+
+//  } //cdnrvalue
+
+// $inv_amt = $invamt;
+// //var_dump($inv_amt);
+// $invdate =date("d-m-Y", strtotime($tr_date));
+
+//  $inv['nt'][]= array('nt_num' => $tr_id,
+//  'nt_dt'=>$invdate,
+//  'ntty'=>$nttype,
+//  'val'=> (float)$inv_amt,
+//  'pos' =>"'" . substr($gstin,0,2) ."'", // $gstvalue['placeofsupply'] ."'",
+//  'rchrg' => $rcm,
+//  'itms'=>$itms,'inv_typ' => 'R');
+
+
+//    } //transbyGstin
+
+ 
+// }
+
+//  } //gstvalue
+// $arrmerge1[]= array_merge(array('ctin' => $gstin),$inv);
+
+// $inv = array();
+// $itms = array();
+
+// }
+
+// $data['cdnr']=$arrmerge1;
+// $arrmerge1=array();
+// $finalmerge = array_merge(array('gstin'=>$compGstin,'fp'=>"'". $retmon,'version'=>"GST3.0.3",'hash'=>"hash"),$data);
+// }
+
+// //B2C
+
+// $b2arr = array();
+// $b2cData=$this->data_model->getB2C($fdate,$tdate,$cid);
+
+// if($b2cData)
+//   //var_dump($b2cData);
+// {
+// foreach ($b2cData as $key => $b2cvalue) {
+  
+  
+
+// if($compStatecode==$b2cvalue['pos'])
+// {
+// //$itm_gstpc = $b2bvalue['gst_pc'].'01';
+
+// $b2arr[] = array('sply_ty'=>"INTRA",'pos'=>"'" . $b2cvalue['pos'],'typ'=>$ec,'txval'=>(float)$b2cvalue['taxable_amt'],'rt'=>(float)$b2cvalue['gst_pc'],'iamt'=>(float)$b2cvalue['item_igst'],'camt'=>(float)$b2cvalue['item_cgst'],'samt'=>(float)$b2cvalue['item_sgst'],'csamt'=>(float)$b2cvalue['item_cess']);
+// }
+// else {
+// $b2arr[] = array('sply_ty'=>"INTER",'pos'=>"'" . $b2cvalue['pos'],'typ'=>$ec,'txval'=>(float)$b2cvalue['taxable_amt'],'rt'=>(float)$b2cvalue['gst_pc'],'iamt'=>(float)$b2cvalue['item_igst'],'camt'=>(float)$b2cvalue['item_cgst'],'samt'=>(float)$b2cvalue['item_sgst'],'csamt'=>(float)$b2cvalue['item_cess']);
+// }
+
+// }
+// }
+
+
+// //HSN List
+//     $hsndata=array();
+//     $gstr1hsnData=$this->data_model->getGstr1hsn($fdate,$tdate,$cid,$trans_stype);
+//     if($gstr1hsnData)
+//     {
+//       $rw=1;
+//       foreach ($gstr1hsnData as $key => $hsn) {
+// //        substr( $string_n, 0, 4 ) === "http"
+//         if(substr($hsn['item_hsnsac'],0,2)=="99")
+//   {
+//         $hsndata["data"][]=array("num"=>$rw,"hsn_sc"=>$hsn['item_hsnsac'],"desc"=>"","uqc"=>"NA","qty"=>intval($hsn['item_qty']),"rt"=>floatval($hsn['item_gstpc']),"txval"=>floatval($hsn['taxable_amount']),"iamt"=>floatval($hsn['igst_amount']),"camt"=>floatval($hsn['cgst_amount']),"samt"=>floatval($hsn['sgst_amount']),"csamt"=>floatval($hsn['cess_amount']));
+//   }
+//   else
+//   {
+//     $hsndata["data"][]=array("num"=>$rw,"hsn_sc"=>$hsn['item_hsnsac'],"desc"=>"","uqc"=>$hsn['item_unit'],"qty"=>intval($hsn['item_qty']),"rt"=>floatval($hsn['item_gstpc']),"txval"=>floatval($hsn['taxable_amount']),"iamt"=>floatval($hsn['igst_amount']),"camt"=>floatval($hsn['cgst_amount']),"samt"=>floatval($hsn['sgst_amount']),"csamt"=>floatval($hsn['cess_amount']));
+
+//   }      
+
+//         $rw++;
+//       }
+//     }
+
+
+
+
+
+// $data['b2cs']=$b2arr;
+// $data['hsn'] =$hsndata;
+// $fmerge = array_merge($finalmerge,$data);
+// $inv = array();
+// $itms = array();
+
+// ini_set('precision',10);
+// ini_set('serialize_precision',10);
+
+// //echo json_encode($fmerge);
+// $output = json_encode($fmerge,JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+//   $outp = str_replace("'", "", $output);
+//   echo $outp;
+
+
+
+
+
+// //$output = json_encode($finalmerge,JSON_NUMERIC_CHECK | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+//  // $outp = str_replace("'", "", $output);
+//  // echo $outp;
+
+
+// //echo json_encode($finalmerge,JSON_PRETTY_PRINT);
+
+
+
+
+//   }
 
 
 
@@ -1281,6 +1628,60 @@ if($type=="B2C")
 echo json_encode($data);
 }
 
+//b2c-hsn
+public function getgstr1b2chsndata()
+{
+  $data=array();
+   extract($_POST);
+   $data_arr=get_defined_vars();
+   //var_dump($data_arr);
+   $cid=$data_arr['compId'];
+   $fdate=$data_arr['fdate'];
+   $tdate=$data_arr['tdate'];
+   $type=$data_arr['type'];
+
+$gstr1hsnData=$this->data_model->getGstr1b2chsn($fdate,$tdate,$cid,$type);
+//var_dump($gstr1hsnData);
+if($gstr1hsnData)
+{
+
+foreach ($gstr1hsnData as $key => $hvalue) {
+     $data["data"][]=array("hsnsac"=>$hvalue['item_hsnsac'],"uqc"=>$hvalue['item_unit'], "total_qty"=>$hvalue['item_qty'],"taxable_value"=>$hvalue['taxable_amount'], "gstpc"=>$hvalue['item_gstpc'],"igst"=>$hvalue['igst_amount'],"cgst"=>$hvalue['cgst_amount'],"sgst"=>$hvalue['sgst_amount'],"cess"=>$hvalue['cess_amount']);
+
+  }  
+}
+
+
+echo json_encode($data);
+}
+
+
+//b2b-hsn
+public function getgstr1b2bhsndata()
+{
+  $data=array();
+   extract($_POST);
+   $data_arr=get_defined_vars();
+   //var_dump($data_arr);
+   $cid=$data_arr['compId'];
+   $fdate=$data_arr['fdate'];
+   $tdate=$data_arr['tdate'];
+   $type=$data_arr['type'];
+
+$gstr1hsnData=$this->data_model->getGstr1b2bhsn($fdate,$tdate,$cid,$type);
+//var_dump($gstr1hsnData);
+if($gstr1hsnData)
+{
+
+foreach ($gstr1hsnData as $key => $hvalue) {
+     $data["data"][]=array("hsnsac"=>$hvalue['item_hsnsac'],"uqc"=>$hvalue['item_unit'], "total_qty"=>$hvalue['item_qty'],"taxable_value"=>$hvalue['taxable_amount'], "gstpc"=>$hvalue['item_gstpc'],"igst"=>$hvalue['igst_amount'],"cgst"=>$hvalue['cgst_amount'],"sgst"=>$hvalue['sgst_amount'],"cess"=>$hvalue['cess_amount']);
+
+  }  
+}
+
+
+echo json_encode($data);
+}
 
 
 public function getgstr1data()
